@@ -18,7 +18,7 @@ class ReplayBuffer:
     A simple FIFO experience replay buffer for TD3 agents.
     """
 
-    def __init__(self, obs_dim, act_dim, size, recurrent, hidden_dim, n_sequence, n_burn_in, net_names, device):
+    def __init__(self, obs_dim, act_dim, size, recurrent, stored_state, hidden_dim, n_sequence, n_burn_in, net_names, device):
         self.obs_buf = np.zeros(core.combined_shape(size, obs_dim), dtype=np.float32)
         self.obs2_buf = np.zeros(core.combined_shape(size, obs_dim), dtype=np.float32)
         self.act_buf = np.zeros(core.combined_shape(size, act_dim), dtype=np.float32)
@@ -36,6 +36,7 @@ class ReplayBuffer:
             
         self.ptr, self.size, self.max_size = 0, 0, size
         self.recurrent = recurrent
+        self.stored_state = stored_state
         self.n_sequence = n_sequence
         self.n_burn_in = n_burn_in
         self.net_names = net_names
@@ -51,12 +52,19 @@ class ReplayBuffer:
             for net in self.net_names:
                 h, c = hiddens[net]
                 h2, c2 = next_hiddens[net]
-                # Detach the hidden state so that BPTT only goes through until this time step
-                self.hidden_buf[net]['h'][self.ptr] = h.cpu().numpy()
-                self.hidden_buf[net]['c'][self.ptr] = c.cpu().numpy()
-                self.hidden_buf[net]['h2'][self.ptr] = h2.cpu().numpy()
-                self.hidden_buf[net]['c2'][self.ptr] = c2.cpu().numpy()
-            
+                if self.stored_state:
+                    # Detach the hidden state so that BPTT only goes through until this time step
+                    self.hidden_buf[net]['h'][self.ptr] = h.cpu().numpy()
+                    self.hidden_buf[net]['c'][self.ptr] = c.cpu().numpy()
+                    self.hidden_buf[net]['h2'][self.ptr] = h2.cpu().numpy()
+                    self.hidden_buf[net]['c2'][self.ptr] = c2.cpu().numpy()
+                else:
+                    # Store zero if "stored state" is not used
+                    self.hidden_buf[net]['h'][self.ptr] = torch.zeros_like(h).cpu().numpy()
+                    self.hidden_buf[net]['c'][self.ptr] = torch.zeros_like(c).cpu().numpy()
+                    self.hidden_buf[net]['h2'][self.ptr] = torch.zeros_like(h2).cpu().numpy()
+                    self.hidden_buf[net]['c2'][self.ptr] = torch.zeros_like(c2).cpu().numpy()
+
         self.ptr = (self.ptr+1) % self.max_size
         self.size = min(self.size+1, self.max_size)
 
@@ -142,8 +150,8 @@ def td3(env_fn, actor_critic=core.ActorCritic, ac_kwargs=dict(), seed=0,
         steps_per_epoch=4000, epochs=100, replay_size=int(1e6), gamma=0.99, 
         polyak=0.995, pi_lr=1e-3, q_lr=1e-3, batch_size=100, start_steps=10000, 
         update_after=1000, update_every=50, act_noise=0.1, target_noise=0.2, 
-        noise_clip=0.5, policy_delay=2, num_test_episodes=10, max_ep_len=1000, 
-        recurrent=True, hidden_dim=256, n_burn_in=40, n_sequence=80, n_overlap=40,
+        noise_clip=0.5, policy_delay=2, num_test_episodes=10, max_ep_len=1000,
+        recurrent=True, stored_state=True, hidden_dim=256, n_burn_in=40, n_sequence=80,
         device='cuda', logger_kwargs=dict(), save_freq=1,):
     """
     Twin Delayed Deep Deterministic Policy Gradient (TD3)
@@ -273,7 +281,7 @@ def td3(env_fn, actor_critic=core.ActorCritic, ac_kwargs=dict(), seed=0,
 
     # Experience buffer
     model_names = ['pi', 'q1', 'q2']
-    replay_buffer = ReplayBuffer(obs_dim, act_dim, replay_size, recurrent, 
+    replay_buffer = ReplayBuffer(obs_dim, act_dim, replay_size, recurrent, stored_state,
                                  hidden_dim, n_sequence, n_burn_in, model_names, device)
 
     # Count variables (protip: try to get a feel for how different size networks behave!)
@@ -545,7 +553,9 @@ if __name__ == '__main__':
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=50)
     parser.add_argument('--exp_name', type=str, default='td3')
+    parser.add_argument('--stack_num', type=int, default=3)
     parser.add_argument('--recurrent', action='store_true')
+    parser.add_argument('--stored_state', action='store_true')
     parser.add_argument('--batch_size', type=int, default=100)
     parser.add_argument('--n_sequence', type=int, default=80)
     parser.add_argument('--n_burn_in', type=int, default=40)
@@ -555,11 +565,14 @@ if __name__ == '__main__':
 
     from rnnrl.utils.run_utils import setup_logger_kwargs
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
+    env = PartialObservation(gym.make(args.env))
+    if args.stack_num > 0:
+        env = StackedObservation(env, args.stack_num)
 
-    td3(lambda : PartialObservation(gym.make(args.env)), actor_critic=core.ActorCritic,
+    td3(lambda :env, actor_critic=core.ActorCritic,
         ac_kwargs=dict(), 
         gamma=args.gamma, seed=args.seed, epochs=args.epochs,
-        recurrent = args.recurrent, hidden_dim=args.hid, 
-        device=args.device, logger_kwargs=logger_kwargs,
+        recurrent = args.recurrent, stored_state=args.stored_state,
+        hidden_dim=args.hid, device=args.device, logger_kwargs=logger_kwargs,
         batch_size=args.batch_size, n_sequence=args.n_sequence,
         n_burn_in=args.n_burn_in)
