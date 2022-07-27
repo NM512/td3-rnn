@@ -19,7 +19,7 @@ There are following techniques proposed to adapt off-policy and replay buffer to
 
 TD3 which is off-policy and has replay buffer is used for following benchmarks.
 
-# What I want to know
+# What I want to answer for
 - Difference between the network using simple stacked observation and the network with RNN
 - How following techniques make difference
   - Preserved hidden state
@@ -54,5 +54,7 @@ Benchmarks are executed under environment of **Pendulum-v0** with [PartialObserv
 [PartialObservation](https://github.com/m-naoki/rnnrl/blob/6d3a58d728b30b8f122003bdb54c11ccda8e45e2/rnnrl/utils/wrappers.py#L6) is a wrapper to allow policy to receive observation only once in 3 times of steps for making POMDP.
 
 ![](/plots/1.png)
+
+![](/plots/2.png)
 
 **To be continued...**
