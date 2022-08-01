@@ -4,7 +4,7 @@ import numpy as np
 from collections import deque
 
 class PartialObservation(ObservationWrapper):
-    def __init__(self, env, interval=3):
+    def __init__(self, env, interval=1):
         super().__init__(env)
         self.count = 0
         self.interval = interval

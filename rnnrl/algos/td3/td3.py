@@ -33,7 +33,7 @@ class ReplayBuffer:
                     c2 = np.zeros(core.combined_shape(size, hidden_dim), dtype=np.float32)
                 )for net in net_names
             }
-            
+
         self.ptr, self.size, self.max_size = 0, 0, size
         self.recurrent = recurrent
         self.stored_state = stored_state
@@ -335,8 +335,10 @@ def td3(env_fn, actor_critic=core.ActorCritic, ac_kwargs=dict(), seed=0,
             q1_h, q1_c, q1_h2, q1_c2 = None, None, None, None
             q2_h, q2_c, q2_h2, q2_c2 = None, None, None, None
 
+        # Shape (batch_size, time_step)
         q1, _ = ac.q1(o, a, (q1_h, q1_c))
         q2, _ = ac.q2(o, a, (q2_h, q2_c))
+
         # Bellman backup for Q functions
         with torch.no_grad():
             pi_targ, _ = ac_targ.pi(o2, (pi_h2, pi_c2))
@@ -346,11 +348,11 @@ def td3(env_fn, actor_critic=core.ActorCritic, ac_kwargs=dict(), seed=0,
             epsilon = torch.clamp(epsilon, -noise_clip, noise_clip)
             a2 = pi_targ + epsilon
             a2 = torch.clamp(a2, -act_limit, act_limit)
-
             # Target Q-values
             q1_pi_targ, _ = ac_targ.q1(o2, a2, (q1_h2, q1_c2))
             q2_pi_targ, _ = ac_targ.q2(o2, a2, (q2_h2, q2_c2))
             q_pi_targ = torch.min(q1_pi_targ, q2_pi_targ)
+            # Shape (batch_size, time_step)
             backup = r + gamma * (1 - d) * q_pi_targ
 
         # MSE loss against Bellman backup
@@ -429,9 +431,10 @@ def td3(env_fn, actor_critic=core.ActorCritic, ac_kwargs=dict(), seed=0,
                     p_targ.data.add_((1 - polyak) * p.data)
 
     def get_action(o, pi_hidden, noise_scale):
-        # Shape (batch_size, step_length, vector_dim)
+        # Shape (obs_dim, ) to (batch_size, step_length, obs_dim)
         o = torch.as_tensor(o, dtype=torch.float32).to(device).unsqueeze(0).unsqueeze(0)
         a, pi_hidden = ac.act(o, pi_hidden)
+        # Shape (batch_size, step_length, act_dim) to (act_dim)
         a = a.squeeze(0).squeeze(0)
         a += noise_scale * np.random.randn(act_dim)
         # detach from current graph(memory exceeds limit if graph is not cut)
@@ -440,7 +443,7 @@ def td3(env_fn, actor_critic=core.ActorCritic, ac_kwargs=dict(), seed=0,
         return np.clip(a, -act_limit, act_limit), pi_hidden
     
     def get_q_hidden(o, a, q_net, q_hidden):
-        # Shape (batch_size, step_length, vector_dim)
+        # Shape (feature_dim, ) to (batch_size, step_length, feature_dim)
         o = torch.as_tensor(o, dtype=torch.float32).to(device).unsqueeze(0).unsqueeze(0)
         a = torch.as_tensor(a, dtype=torch.float32).to(device).unsqueeze(0).unsqueeze(0)
         _, next_q_hidden = q_net(o, a, q_hidden)
@@ -553,7 +556,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=50)
     parser.add_argument('--exp_name', type=str, default='td3')
-    parser.add_argument('--stack_num', type=int, default=3)
+    parser.add_argument('--stack_num', type=int, default=0)
     parser.add_argument('--recurrent', action='store_true')
     parser.add_argument('--stored_state', action='store_true')
     parser.add_argument('--batch_size', type=int, default=100)

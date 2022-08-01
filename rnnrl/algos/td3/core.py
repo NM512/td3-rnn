@@ -81,7 +81,7 @@ class QFunction(nn.Module):
 
         q = self.activation(self.l2(q))
         q = self.l3(q)
-        return q.squeeze(-1).squeeze(-1), hidden # Critical to ensure q has right shape.
+        return q.squeeze(-1), hidden # Critical to ensure q has right shape.
 
     def get_initialized_hidden(self):
         h_0, c_0 = None, None
