@@ -1,4 +1,4 @@
-# rnnrl
+# RNN-RL
 Pytorch implementations of RL (Reinforcement Learning) algorithms with RNN (Reccurent Neural Network) and Experience Replay
 
 Disclaimer: My code is based on TD3 of [openAI/spinningup](https://github.com/openai/spinningup).
