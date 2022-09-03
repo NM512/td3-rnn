@@ -1,7 +1,7 @@
 # rnnrl
 Pytorch implementations of RL (Reinforcement Learning) algorithms with RNN (Reccurent Neural Network) and Experience Replay
 
-Disclaimer: My code is based on TD3 of [openAI/spinningup](https://github.com/openai/spinningup) and [AntoineTheb's work](https://github.com/AntoineTheb/RNN-RL)
+Disclaimer: My code is based on TD3 of [openAI/spinningup](https://github.com/openai/spinningup).
 
 # Motivations
 Experiment RL containing RNN and Experience Replay to better understand how following techniches and parameters affect.
@@ -51,5 +51,3 @@ The naive technique to mitigate POMDP is to simply use stacked observations as o
 ![](/plots/1.png)
 
 ![](/plots/2.png)
-
-# To be continued...
