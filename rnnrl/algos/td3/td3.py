@@ -12,6 +12,7 @@ from rnnrl.algos.td3 import core
 from rnnrl.utils.logx import EpochLogger
 from rnnrl.utils.wrappers import PartialObservation, StackedObservation
 
+DIRECT_ACT = True
 
 class ReplayBuffer:
     """
@@ -148,7 +149,7 @@ class ReplayBuffer:
 
 def td3(env_fn, actor_critic=core.ActorCritic, ac_kwargs=dict(), seed=0, 
         steps_per_epoch=4000, epochs=100, replay_size=int(1e6), gamma=0.99, 
-        polyak=0.995, pi_lr=1e-3, q_lr=1e-3, batch_size=100, start_steps=10000, 
+        polyak=0.995, pi_lr=1e-4, q_lr=1e-4, batch_size=100, start_steps=10000,
         update_after=1000, update_every=50, act_noise=0.1, target_noise=0.2, 
         noise_clip=0.5, policy_delay=2, num_test_episodes=10, max_ep_len=1000,
         recurrent=True, stored_state=True, hidden_dim=256, n_burn_in=40, n_sequence=80,
@@ -430,17 +431,42 @@ def td3(env_fn, actor_critic=core.ActorCritic, ac_kwargs=dict(), seed=0,
                     p_targ.data.mul_(polyak)
                     p_targ.data.add_((1 - polyak) * p.data)
 
-    def get_action(o, pi_hidden, noise_scale):
+    class Dan(torch.nn.Module):
+        def __init__(self):
+            super(Dan, self).__init__()
+            self.a_cands = torch.nn.Parameter((
+                torch.rand(4000, 1, act_dim, requires_grad=True) - 0.5) * 2.0 * act_limit)
+
+    def get_action(o, pi_hidden, q_hidden, noise_scale):
         # Shape (obs_dim, ) to (batch_size, step_length, obs_dim)
         o = torch.as_tensor(o, dtype=torch.float32).to(device).unsqueeze(0).unsqueeze(0)
-        a, pi_hidden = ac.act(o, pi_hidden)
+        if DIRECT_ACT:
+            o = o.repeat(4000, 1, 1)
+            h, c = q_hidden
+            h = h.repeat(1, 4000, 1)
+            c = c.repeat(1, 4000, 1)
+            q_hidden = (h, c)
+            dan = Dan().to(device)
+            optimizer = Adam(dan.parameters(), lr=0.1)
+            for i in range(5):
+                optimizer.zero_grad()
+                q, _ = ac.q1(o, dan.a_cands, q_hidden)
+                (-q.mean()).backward()
+                optimizer.step()
+            q, out_q_hidden = ac.q1(o, dan.a_cands, q_hidden)
+            (-q.mean()).backward()
+            ind = torch.argmax(q)
+            a = dan.a_cands[ind:ind+1].cpu().detach().numpy()
+            out_q_hidden = (out_q_hidden[0][:,ind:ind+1].detach(), out_q_hidden[1][:,ind:ind+1].detach())
+        else:
+            a, pi_hidden = ac.act(o, pi_hidden)
         # Shape (batch_size, step_length, act_dim) to (act_dim)
         a = a.squeeze(0).squeeze(0)
         a += noise_scale * np.random.randn(act_dim)
         # detach from current graph(memory exceeds limit if graph is not cut)
         if pi_hidden is not None:
             pi_hidden = (pi_hidden[0].detach(), pi_hidden[1].detach())
-        return np.clip(a, -act_limit, act_limit), pi_hidden
+        return np.clip(a, -act_limit, act_limit), pi_hidden, out_q_hidden
     
     def get_q_hidden(o, a, q_net, q_hidden):
         # Shape (feature_dim, ) to (batch_size, step_length, feature_dim)
@@ -456,9 +482,10 @@ def td3(env_fn, actor_critic=core.ActorCritic, ac_kwargs=dict(), seed=0,
         for j in range(num_test_episodes):
             o, d, ep_ret, ep_len = test_env.reset(), False, 0, 0
             pi_hidden = ac.pi.get_initialized_hidden()
+            q_hidden = ac.q1.get_initialized_hidden()
             while not(d or (ep_len == max_ep_len)):
                 # Take deterministic actions at test time (noise_scale=0)
-                a, pi_hidden = get_action(o, pi_hidden, 0)
+                a, pi_hidden, q_hidden = get_action(o, pi_hidden, q_hidden, 0)
                 o, r, d, _ = test_env.step(a)
                 ep_ret += r
                 ep_len += 1
@@ -479,12 +506,12 @@ def td3(env_fn, actor_critic=core.ActorCritic, ac_kwargs=dict(), seed=0,
         # from a uniform distribution for better exploration. Afterwards, 
         # use the learned policy (with some noise, via act_noise). 
         if t > start_steps:
-            a, next_pi_hidden = get_action(o, pi_hidden, act_noise)
+            a, next_pi_hidden, _ = get_action(o, pi_hidden, q1_hidden, act_noise)
             next_q1_hidden = get_q_hidden(o, a, ac.q1, q1_hidden)
             next_q2_hidden = get_q_hidden(o, a, ac.q1, q2_hidden)
         else:
             a = env.action_space.sample()
-            _, next_pi_hidden = get_action(o, pi_hidden, act_noise)
+            _, next_pi_hidden, _ = get_action(o, pi_hidden, q1_hidden, act_noise)
             next_q1_hidden = get_q_hidden(o, a, ac.q1, q1_hidden)
             next_q2_hidden = get_q_hidden(o, a, ac.q2, q2_hidden)
 
@@ -568,7 +595,7 @@ if __name__ == '__main__':
 
     from rnnrl.utils.run_utils import setup_logger_kwargs
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
-    env = PartialObservation(gym.make(args.env))
+    env = PartialObservation(gym.make(args.env), interval=1)
     if args.stack_num > 0:
         env = StackedObservation(env, args.stack_num)
 
