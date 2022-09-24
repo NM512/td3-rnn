@@ -134,22 +134,22 @@ class ReplayBuffer:
                         act=self.act_buf[idxs],
                         rew=self.rew_buf[idxs],
                         done=self.done_buf[idxs],
-                        h=None, 
-                        c=None, 
+                        h=None,
+                        c=None,
                         h2=None,
                         c2=None)
             batch = {k: torch.as_tensor(
-                v, dtype=torch.float32).to(self.device) 
+                v, dtype=torch.float32).to(self.device)
                 if v is not None else v for k,v in batch.items()}
-        
+
         return batch
 
 
 
-def td3(env_fn, actor_critic=core.ActorCritic, ac_kwargs=dict(), seed=0, 
-        steps_per_epoch=4000, epochs=100, replay_size=int(1e6), gamma=0.99, 
-        polyak=0.995, pi_lr=1e-3, q_lr=1e-3, batch_size=100, start_steps=10000, 
-        update_after=1000, update_every=50, act_noise=0.1, target_noise=0.2, 
+def td3(env_fn, actor_critic=core.ActorCritic, ac_kwargs=dict(), seed=0,
+        steps_per_epoch=4000, epochs=100, replay_size=int(1e6), gamma=0.99,
+        polyak=0.995, pi_lr=1e-4, q_lr=1e-4, batch_size=100, start_steps=10000,
+        update_after=1000, update_every=50, act_noise=0.1, target_noise=0.2,
         noise_clip=0.5, policy_delay=2, num_test_episodes=10, max_ep_len=1000,
         recurrent=True, stored_state=True, hidden_dim=256, n_burn_in=40, n_sequence=80,
         device='cuda', logger_kwargs=dict(), save_freq=1,):
@@ -556,7 +556,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=50)
     parser.add_argument('--exp_name', type=str, default='td3')
-    parser.add_argument('--stack_num', type=int, default=0)
+    parser.add_argument('--stack_num', type=int, default=-1)
     parser.add_argument('--recurrent', action='store_true')
     parser.add_argument('--stored_state', action='store_true')
     parser.add_argument('--batch_size', type=int, default=100)

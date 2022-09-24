@@ -13,6 +13,18 @@ def combined_shape(length, shape=None):
 def count_vars(module):
     return sum([np.prod(p.shape) for p in module.parameters()])
 
+
+def weight_init(m):
+    if isinstance(m, nn.Linear):
+        nn.init.orthogonal_(m.weight.data)
+        if hasattr(m.bias, 'data'):
+            m.bias.data.fill_(0.0)
+    elif isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
+        gain = nn.init.calculate_gain('relu')
+        nn.init.orthogonal_(m.weight.data, gain)
+        if hasattr(m.bias, 'data'):
+            m.bias.data.fill_(0.0)
+
 class Actor(nn.Module):
     def __init__(self, obs_dim, act_dim, hidden_dim, activation, act_limit, recurrent, device):
         super().__init__()
@@ -21,38 +33,55 @@ class Actor(nn.Module):
         self.device = device
         self.activation = activation()
         self.tanh = nn.Tanh()
+        self.layer_norm1 = nn.LayerNorm(16)
+        self.layer_norm2 = nn.LayerNorm(16)
+        self.layer_norm3 = nn.LayerNorm(hidden_dim)
         if recurrent:
-            self.l1 = nn.LSTM(obs_dim, hidden_dim, batch_first=True)
+            self.obs_enc1 = nn.Linear(obs_dim, 16)
+            self.obs_enc2 = nn.Linear(obs_dim, 16)
+            self.rnn = nn.LSTM(16, hidden_dim, batch_first=True)
+            self.l1 = nn.Linear(hidden_dim + 16, hidden_dim)
+            self.l2 = nn.Linear(hidden_dim, act_dim)
         else:
             self.l1 = nn.Linear(obs_dim, hidden_dim)
-        self.l2 = nn.Linear(hidden_dim, hidden_dim)
-        self.l3 = nn.Linear(hidden_dim, act_dim)
-        
+            self.l2 = nn.Linear(hidden_dim, hidden_dim)
+            self.l3 = nn.Linear(hidden_dim, act_dim)
+
+        self.apply(weight_init)
+
     def forward(self, obs, hidden):
         if self.recurrent:
-            self.l1.flatten_parameters()
-            a, hidden = self.l1(obs, hidden)
+            obs_enc1 = self.activation(self.obs_enc1(obs))
+            obs_enc1 = self.layer_norm1(obs_enc1)
+            obs_enc2 = self.activation(self.obs_enc2(obs))
+            obs_enc2 = self.layer_norm2(obs_enc1)
+            self.rnn.flatten_parameters()
+            h, hidden = self.rnn(obs_enc1, hidden)
+            h = self.layer_norm3(h)
+            h = self.activation(h)
+            h = torch.cat((h, obs_enc2), -1)
+            h = self.activation(self.l1(h))
+            a = self.tanh(self.l2(h))
         else:
             a, hidden = self.activation(self.l1(obs)), None
-
-        a = self.activation(self.l2(a))
-        a = self.tanh(self.l3(a))
+            a = self.activation(self.l2(a))
+            a = self.tanh(self.l3(a))
 
         return self.act_limit * a, hidden
-    
+
     def get_initialized_hidden(self):
         h_0, c_0 = None, None
         if self.recurrent:
             h_0 = torch.zeros((
-                self.l1.num_layers,
+                self.rnn.num_layers,
                 1,
-                self.l1.hidden_size),
+                self.rnn.hidden_size),
                 dtype=torch.float).to(self.device)
 
             c_0 = torch.zeros((
-                self.l1.num_layers,
+                self.rnn.num_layers,
                 1,
-                self.l1.hidden_size),
+                self.rnn.hidden_size),
                 dtype=torch.float).to(self.device)
 
         return (h_0, c_0)
@@ -64,38 +93,54 @@ class QFunction(nn.Module):
         self.recurrent = recurrent
         self.device = device
         self.activation = activation()
-        if self.recurrent:
-            self.l1 = nn.LSTM(obs_dim+act_dim, hidden_dim, batch_first=True)
+        self.layer_norm1 = nn.LayerNorm(16)
+        self.layer_norm2 = nn.LayerNorm(16)
+        self.layer_norm3 = nn.LayerNorm(hidden_dim)
+        if recurrent:
+            self.obs_enc1 = nn.Linear(obs_dim, 16)
+            self.obs_enc2 = nn.Linear(obs_dim, 16)
+            self.rnn = nn.LSTM(16 + act_dim, hidden_dim, batch_first=True)
+            self.l1 = nn.Linear(hidden_dim + 16, hidden_dim)
+            self.l2 = nn.Linear(hidden_dim, 1)
         else:
             self.l1 = nn.Linear(obs_dim + act_dim, hidden_dim)
-        self.l2 = nn.Linear(hidden_dim, hidden_dim)
-        self.l3 = nn.Linear(hidden_dim, 1)
+            self.l2 = nn.Linear(hidden_dim, hidden_dim)
+            self.l3 = nn.Linear(hidden_dim, 1)
+
 
     def forward(self, obs, act, hidden):
-        obs_act = torch.cat([obs, act], dim=-1)
         if self.recurrent:
-            self.l1.flatten_parameters()
-            q, hidden = self.l1(obs_act, hidden)
+            obs_enc1 = self.activation(self.obs_enc1(obs))
+            obs_enc1 = self.layer_norm1(obs_enc1)
+            obs_enc2 = self.activation(self.obs_enc2(obs))
+            obs_enc2 = self.layer_norm2(obs_enc1)
+            obs_act = torch.cat([obs_enc1, act], dim=-1)
+            self.rnn.flatten_parameters()
+            h, hidden = self.rnn(obs_act, hidden)
+            h = self.layer_norm3(h)
+            h = torch.cat((h, obs_enc2), -1)
+            h = self.activation(self.l1(h))
+            q = self.l2(h)
         else:
+            obs_act = torch.cat([obs, act], dim=-1)
             q, hidden = self.activation(self.l1(obs_act)), None
-
-        q = self.activation(self.l2(q))
-        q = self.l3(q)
+            q = self.activation(self.l2(q))
+            q = self.l3(q)
         return q.squeeze(-1), hidden # Critical to ensure q has right shape.
 
     def get_initialized_hidden(self):
         h_0, c_0 = None, None
         if self.recurrent:
             h_0 = torch.zeros((
-                self.l1.num_layers,
+                self.rnn.num_layers,
                 1,
-                self.l1.hidden_size),
+                self.rnn.hidden_size),
                 dtype=torch.float).to(self.device)
 
             c_0 = torch.zeros((
-                self.l1.num_layers,
+                self.rnn.num_layers,
                 1,
-                self.l1.hidden_size),
+                self.rnn.hidden_size),
                 dtype=torch.float).to(self.device)
 
         return (h_0, c_0)

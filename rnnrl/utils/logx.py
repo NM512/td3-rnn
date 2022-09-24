@@ -62,7 +62,7 @@ class Logger:
                 Defaults to ``progress.txt``. 
 
             exp_name (string): Experiment name. If you run multiple training
-                runs and give them all the same ``exp_name``, the plotter
+                 and give them all the same ``exp_name``, the plotter
                 will know to group them. (Use case: if you run the same
                 hyperparameter configuration with multiple random seeds, you
                 should give them all the same ``exp_name``.)
