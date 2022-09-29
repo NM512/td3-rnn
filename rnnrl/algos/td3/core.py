@@ -33,14 +33,14 @@ class Actor(nn.Module):
         self.device = device
         self.activation = activation()
         self.tanh = nn.Tanh()
-        self.layer_norm1 = nn.LayerNorm(16)
-        self.layer_norm2 = nn.LayerNorm(16)
-        self.layer_norm3 = nn.LayerNorm(hidden_dim)
+        self.norm1 = nn.LayerNorm(32)
+        self.norm2 = nn.LayerNorm(32)
+        self.norm3 = nn.LayerNorm(hidden_dim)
         if recurrent:
-            self.obs_enc1 = nn.Linear(obs_dim, 16)
-            self.obs_enc2 = nn.Linear(obs_dim, 16)
-            self.rnn = nn.LSTM(16, hidden_dim, batch_first=True)
-            self.l1 = nn.Linear(hidden_dim + 16, hidden_dim)
+            self.obs_enc1 = nn.Linear(obs_dim, 32)
+            self.obs_enc2 = nn.Linear(obs_dim, 32)
+            self.rnn = nn.LSTM(32, hidden_dim, batch_first=True)
+            self.l1 = nn.Linear(hidden_dim + 32, hidden_dim)
             self.l2 = nn.Linear(hidden_dim, act_dim)
         else:
             self.l1 = nn.Linear(obs_dim, hidden_dim)
@@ -51,13 +51,17 @@ class Actor(nn.Module):
 
     def forward(self, obs, hidden):
         if self.recurrent:
-            obs_enc1 = self.activation(self.obs_enc1(obs))
-            obs_enc1 = self.layer_norm1(obs_enc1)
-            obs_enc2 = self.activation(self.obs_enc2(obs))
-            obs_enc2 = self.layer_norm2(obs_enc1)
+            obs_enc1 = self.obs_enc1(obs)
+            obs_enc1 = self.norm1(obs_enc1)
+            obs_enc1 = self.activation(obs_enc1)
+
+            obs_enc2 = self.obs_enc2(obs)
+            obs_enc2 = self.norm2(obs_enc2)
+            obs_enc2 = self.activation(obs_enc2)
+
             self.rnn.flatten_parameters()
             h, hidden = self.rnn(obs_enc1, hidden)
-            h = self.layer_norm3(h)
+            h = self.norm3(h)
             h = self.activation(h)
             h = torch.cat((h, obs_enc2), -1)
             h = self.activation(self.l1(h))
@@ -93,14 +97,14 @@ class QFunction(nn.Module):
         self.recurrent = recurrent
         self.device = device
         self.activation = activation()
-        self.layer_norm1 = nn.LayerNorm(16)
-        self.layer_norm2 = nn.LayerNorm(16)
-        self.layer_norm3 = nn.LayerNorm(hidden_dim)
+        self.norm1 = nn.LayerNorm(32)
+        self.norm2 = nn.LayerNorm(32)
+        self.norm3 = nn.LayerNorm(hidden_dim)
         if recurrent:
-            self.obs_enc1 = nn.Linear(obs_dim, 16)
-            self.obs_enc2 = nn.Linear(obs_dim, 16)
-            self.rnn = nn.LSTM(16 + act_dim, hidden_dim, batch_first=True)
-            self.l1 = nn.Linear(hidden_dim + 16, hidden_dim)
+            self.obs_enc1 = nn.Linear(obs_dim, 32)
+            self.obs_enc2 = nn.Linear(obs_dim, 32)
+            self.rnn = nn.LSTM(32 + act_dim, hidden_dim, batch_first=True)
+            self.l1 = nn.Linear(hidden_dim + 32, hidden_dim)
             self.l2 = nn.Linear(hidden_dim, 1)
         else:
             self.l1 = nn.Linear(obs_dim + act_dim, hidden_dim)
@@ -110,14 +114,18 @@ class QFunction(nn.Module):
 
     def forward(self, obs, act, hidden):
         if self.recurrent:
-            obs_enc1 = self.activation(self.obs_enc1(obs))
-            obs_enc1 = self.layer_norm1(obs_enc1)
-            obs_enc2 = self.activation(self.obs_enc2(obs))
-            obs_enc2 = self.layer_norm2(obs_enc1)
+            obs_enc1 = self.obs_enc1(obs)
+            obs_enc1 = self.norm1(obs_enc1)
+            obs_enc1 = self.activation(obs_enc1)
+
+            obs_enc2 = self.obs_enc2(obs)
+            obs_enc2 = self.norm2(obs_enc2)
+            obs_enc2 = self.activation(obs_enc2)
+
             obs_act = torch.cat([obs_enc1, act], dim=-1)
             self.rnn.flatten_parameters()
             h, hidden = self.rnn(obs_act, hidden)
-            h = self.layer_norm3(h)
+            h = self.norm3(h)
             h = torch.cat((h, obs_enc2), -1)
             h = self.activation(self.l1(h))
             q = self.l2(h)

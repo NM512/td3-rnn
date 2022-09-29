@@ -431,6 +431,7 @@ def td3(env_fn, actor_critic=core.ActorCritic, ac_kwargs=dict(), seed=0,
                     p_targ.data.add_((1 - polyak) * p.data)
 
     def get_action(o, pi_hidden, noise_scale):
+        ac.eval()
         # Shape (obs_dim, ) to (batch_size, step_length, obs_dim)
         o = torch.as_tensor(o, dtype=torch.float32).to(device).unsqueeze(0).unsqueeze(0)
         a, pi_hidden = ac.act(o, pi_hidden)
@@ -440,9 +441,11 @@ def td3(env_fn, actor_critic=core.ActorCritic, ac_kwargs=dict(), seed=0,
         # detach from current graph(memory exceeds limit if graph is not cut)
         if pi_hidden is not None:
             pi_hidden = (pi_hidden[0].detach(), pi_hidden[1].detach())
+        ac.train()
         return np.clip(a, -act_limit, act_limit), pi_hidden
-    
+
     def get_q_hidden(o, a, q_net, q_hidden):
+        q_net.eval()
         # Shape (feature_dim, ) to (batch_size, step_length, feature_dim)
         o = torch.as_tensor(o, dtype=torch.float32).to(device).unsqueeze(0).unsqueeze(0)
         a = torch.as_tensor(a, dtype=torch.float32).to(device).unsqueeze(0).unsqueeze(0)
@@ -450,6 +453,7 @@ def td3(env_fn, actor_critic=core.ActorCritic, ac_kwargs=dict(), seed=0,
         # detach from current graph(memory exceeds limit if graph is not cut)
         if next_q_hidden is not None:
             next_q_hidden = (next_q_hidden[0].detach(), next_q_hidden[1].detach())
+        q_net.train()
         return next_q_hidden
 
     def test_agent():

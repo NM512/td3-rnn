@@ -8,10 +8,10 @@ setup(
     version='1.0',
     install_requires=[
         'cloudpickle==1.2.1',
-        'gym[atari,box2d,classic_control]~=0.15.3',
+        #'gym[atari,box2d,classic_control]~=0.15.3',
         'ipython',
         'joblib',
-        'matplotlib==3.1.1',
+        #'matplotlib==3.1.1',
         'mpi4py',
         'numpy',
         'pandas',
@@ -19,7 +19,7 @@ setup(
         'psutil',
         'scipy',
         'seaborn==0.8.1',
-        'torch==1.3.1',
+        'torch==1.12.0',
         'tqdm'
     ],
     description="Pytorch implementations of reinforcement learning algorithms with RNN.",
