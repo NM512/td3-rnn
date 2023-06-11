@@ -48,6 +48,6 @@ Benchmarks are executed under environment of **Pendulum-v0** with [PartialObserv
 [PartialObservation](https://github.com/m-naoki/rnnrl/blob/6d3a58d728b30b8f122003bdb54c11ccda8e45e2/rnnrl/utils/wrappers.py#L6) is a wrapper to allow policy to receive observation only once in 3 times of steps for making POMDP.
 The naive technique to mitigate POMDP is to simply use stacked observations as observation at some point.
 
-![](/plots/1.png)
+![1](https://github.com/NM512/td3-rnn/assets/70328564/43fda1f3-26ad-4ef5-910b-aca292ab42eb)
 
-![](/plots/2.png)
+![2](https://github.com/NM512/td3-rnn/assets/70328564/d2a9597e-5afd-4301-aa38-86d4ffb66565)

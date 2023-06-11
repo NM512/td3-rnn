@@ -23,5 +23,4 @@ setup(
         'tqdm'
     ],
     description="Pytorch implementations of reinforcement learning algorithms with RNN.",
-    author="m-naoki",
 )
